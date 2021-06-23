@@ -35,7 +35,7 @@ for v in traversal.iter_mtg2(g, g.root):
 # scene = HSVisu.visu(g,def_elmnt_color_dict=True,scene=Scene(),
 #                    snap_shot_path='mockup.png')
 scene = display.visu(g, def_elmnt_color_dict=True, scene=Scene(),
-                     view_result=True)
+                     view_result=False)
 
 # =============================================================================
 # Run HydroShoot
