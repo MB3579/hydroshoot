@@ -405,7 +405,7 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         'E': sapflow,
         # 'sapEast': sapEast,
         # 'sapWest': sapWest,
-        'Tleaf': t_ls
+        'Tleaf2': t_ls
     }
 
     # Results DataFrame
