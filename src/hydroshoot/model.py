@@ -3,6 +3,7 @@
 energy-exchange, and soil water depletion, for each given time step.
 """
 import numpy as np
+#import pdb
 from copy import deepcopy
 from os.path import isfile
 from datetime import datetime, timedelta
@@ -396,6 +397,13 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     # Median leaf temperature
     t_ls = [np.median(Tlc_dict[date].values()) for date in meteo.time]
 
+    # Number of leaves above a given temperature threshold
+#    pdb.set_trace()
+    temp_array = [Tlc_dict[date].values() for date in meteo.time]
+    temp_array2 = np.asarray(temp_array)
+    temp_bool = temp_array2 > 27
+    tthresh_ls = temp_bool.sum()
+
     # Intercepted global radiation
     rg_ls = np.array(rg_ls) / (soil_dimensions[0] * soil_dimensions[1])
 
@@ -405,7 +413,8 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         'E': sapflow,
         # 'sapEast': sapEast,
         # 'sapWest': sapWest,
-        'Tleaf2': t_ls
+        'Tleaf': t_ls,
+	'Tthresh': tthresh_ls
     }
 
     # Results DataFrame
