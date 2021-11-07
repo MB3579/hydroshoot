@@ -3,7 +3,7 @@
 energy-exchange, and soil water depletion, for each given time step.
 """
 import numpy as np
-#import pdb
+import pdb
 from copy import deepcopy
 from os.path import isfile
 from datetime import datetime, timedelta
@@ -27,6 +27,7 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     - **scene**: PlantGl scene
     - **kwargs** can include:
         - **psi_soil**: [MPa] predawn soil water potential
+	- **initial_psi_soil**: [MPa] predawn soil WP at the first timestep   
         - **gdd_since_budbreak**: [°Cd] growing degree-day since bubreak
         - **sun2scene**: PlantGl scene, when prodivided, a sun object (sphere) is added to it
         - **soil_size**: [cm] length of squared mesh size
@@ -37,10 +38,17 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     time_on = datetime.now()
 
     # Read user parameters
-    params_path = wd + 'params.json'
-    params = Params(params_path)
+    if 'param_index' in kwargs:
+	param_index_var = kwargs['param_index'] # loop through multiple parameter files
+        params_path = wd + 'params%s.json' % param_index_var
+	output_index = param_index_var
+    else:
+        params_path = wd + 'params.json'
+	output_index = 1
 
-    output_index = params.simulation.output_index
+    params = Params(params_path)
+    #output_index = params.simulation.output_index
+   
 
     # ==============================================================================
     # Initialisation
@@ -60,18 +68,36 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     #   Determination of the simulation period
     sdate = datetime.strptime(params.simulation.sdate, "%Y-%m-%d %H:%M:%S")
     edate = datetime.strptime(params.simulation.edate, "%Y-%m-%d %H:%M:%S")
-    datet = date_range(sdate, edate, freq='H')
-    meteo = meteo_tab.ix[datet]
-    time_conv = {'D': 86.4e3, 'H': 3600., 'T': 60., 'S': 1.}[datet.freqstr]
+    meteo = meteo_tab.ix[sdate:edate]
+    eindex = meteo_tab.time.index.get_loc(edate) # make date_list 1 timepoint longer
+    post_date = meteo_tab.time.ix[eindex+1] 
+    date_list = meteo_tab.time.ix[sdate:post_date] # to calculate length of last timestep
+    #datet = date_range(sdate, edate, freq='H')
+    #meteo = meteo_tab.ix[datet]
+    #time_conv = {'D': 86.4e3, 'H': 3600., 'T': 60., 'S': 1.}[datet.freqstr]
+    time_conv = 3600.0    
 
     # Reading available pre-dawn soil water potential data
     if 'psi_soil' in kwargs:
         psi_pd = DataFrame([kwargs['psi_soil']] * len(meteo.time),
                            index=meteo.time, columns=['psi'])
+	psi_soil = kwargs['psi_soil']
+    elif 'initial_psi_soil' in kwargs: # only sets first timestep
+	psi_soil = kwargs['initial_psi_soil'] # later steps calculated from water balance
     else:
         assert (isfile(wd + 'psi_soil.input')), "The 'psi_soil.input' file is missing."
         psi_pd = read_csv(wd + 'psi_soil.input', sep=';', decimal='.').set_index('time')
         psi_pd.index = [datetime.strptime(s, "%Y-%m-%d") for s in psi_pd.index]
+
+    # Define irrigation dates
+    irr_freq = 7 # weekly irrigation
+    irr_freq_dt = timedelta(days=irr_freq) # irrigation period
+    irr_sdate = sdate + irr_freq_dt # start irrigation after 1 period
+    irr_remain = 0.0 # initialize irrigation 
+    irr_to_apply = 0.0
+    drip_rate = 3.8 # drip rate -2 emitters/vine at 0.5 gal/hr
+    RDI = 0.6 # deficit irrigation replacement rate (0 to 1)
+    dt_index = 0 # start at date 1  
 
     # Unit length conversion (from scene unit to the standard [m]) unit)
     unit_scene_length = params.simulation.unit_scene_length
@@ -155,6 +181,7 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     print 'Hydraulic structure: %s' % params.simulation.hydraulic_structure
 
     psi_min = params.hydraulic.psi_min
+    TLP = params.hydraulic.TLP
 
     # Parameters of leaf Nitrogen content-related models
     Na_dict = params.exchange.Na_dict
@@ -170,6 +197,8 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
                                            turtle_sectors=turtle_sectors, icosphere_level=icosphere_level,
                                            unit_scene_length=unit_scene_length)
 
+
+
     # Soil class
     soil_class = params.soil.soil_class
     print 'Soil class: %s' % soil_class
@@ -182,6 +211,8 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
     rhyzo_solution = params.soil.rhyzo_solution
     print 'rhyzo_solution: %s' % rhyzo_solution
 
+
+   # pdb.set_trace()
     if rhyzo_solution:
         dist_roots, rad_roots = params.soil.roots
         if not any(item.startswith('rhyzo') for item in g.property('label').values()):
@@ -270,26 +301,38 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
                                                   Na_dict['bN'],
                                                   Na_dict['aM'],
                                                   Na_dict['bM'])
-
+   
     # Define path to folder
-    output_path = wd + 'output' + output_index + '/'
-
+    output_path = wd + 'output' + '/'
+    
     # Save geometry in an external file
-    # HSArc.mtg_save_geometry(scene, output_path)
-
+    #g.date = '10_days_sim'
+    #architecture.mtg_save(g, scene, output_path) 
+    #architecture.mtg_save_geometry(scene, output_path, '10_days_sim')
+    #pdb.set_trace()
     # ==============================================================================
     # Simulations
     # ==============================================================================
 
     sapflow = []
+    sapflow_tot = []
+    irrigation_ls = []
     # sapEast = []
     # sapWest = []
     an_ls = []
     rg_ls = []
+    psi_soil_ls = []
+    psi_stem_ls = []
+    psi_leaf_mean_ls = []
+    psi_leaf_max_ls = []
+    psi_leaf_min_ls = []
+    pthresh_ls = []
+    tthresh_ls = []
     psi_stem = {}
     Tlc_dict = {}
     Ei_dict = {}
     an_dict = {}
+ #   LA_dict = {}
     gs_dict = {}
 
     # The time loop +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -303,21 +346,9 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         # Add a date index to g
         g.date = datetime.strftime(date, "%Y%m%d%H%M%S")
 
-        # Read soil water potntial at midnight
-        if 'psi_soil' in kwargs:
-            psi_soil = kwargs['psi_soil']
-        else:
-            if date.hour == 0:
-                try:
-                    psi_soil_init = psi_pd.ix[date.date()][0]
-                    psi_soil = psi_soil_init
-                except KeyError:
-                    pass
-            # Estimate soil water potntial evolution due to transpiration
-            else:
-                psi_soil = hydraulic.soil_water_potential(psi_soil,
-                                                          g.node(vid_collar).Flux * time_conv,
-                                                          soil_class, soil_total_volume, psi_min)
+	# Calculate length of current timestep
+	ts_diff = date_list[dt_index+1] - date_list[dt_index]
+	timestep_len = ts_diff.seconds # seconds between timesteps
 
         if 'sun2scene' not in kwargs or not kwargs['sun2scene']:
             sun2scene = None
@@ -351,25 +382,78 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         t_sky_eff = RdRsH_ratio * t_cloud + (1 - RdRsH_ratio) * t_sky
 
         solver.solve_interactions(g, imeteo, psi_soil, t_soil, t_sky_eff,
-                                  vid_collar, vid_base, length_conv, time_conv,
+                                  vid_collar, vid_base, length_conv, timestep_len,
                                   rhyzo_total_volume, params, form_factors, simplified_form_factors)
-
+        
         # Write mtg to an external file
         if scene is not None:
             architecture.mtg_save(g, scene, output_path)
+            #architecture.mtg_save_geometry(scene, output_path, g.date)
 
-        # Plot stuff..
+        # Save results
         sapflow.append(g.node(vid_collar).Flux)
+	sapflow_tot.append(g.node(vid_collar).Flux * timestep_len * 1000)
         # sapEast.append(g.node(arm_vid['arm1']).Flux)
         # sapWest.append(g.node(arm_vid['arm2']).Flux)
-
         an_ls.append(g.node(vid_collar).FluxC)
-
-        psi_stem[date] = deepcopy(g.property('psi_head'))
-        Tlc_dict[date] = deepcopy(g.property('Tlc'))
+        psi_stem[date] = deepcopy(g.property('psi_head')) # water potentials
+        Tlc_dict[date] = deepcopy(g.property('Tlc')) # temperature
         Ei_dict[date] = deepcopy(g.property('Eabs'))
-        an_dict[date] = deepcopy(g.property('An'))
-        gs_dict[date] = deepcopy(g.property('gs'))
+        an_dict[date] = deepcopy(g.property('An')) # photosynthesis
+	#LA_dict[date] = deepcopy(g.property('leaf_area')) # leaf area
+	#Phot = np.asarray(an_dict[date].values())
+	#Leaf_area = np.asarray(LA_dict[date].values())
+	#An_LA = np.multiply(Phot, Leaf_area) # carbon gain per leaf
+	#An_LA_tot = np.sum(An_LA) # total canopy carbon gain
+	#An_LA_tot_ls.append(An_LA_tot) # store canopy carbon gain
+        gs_dict[date] = deepcopy(g.property('gs')) # stomatal conductance	
+	psi_stem_ls.append(g.node(3).psi_head) # collar WP 
+	psi_leaf_mean_ls.append(np.mean([g.node(vid).psi_head for vid in g.property('gs').keys()])) # mean leaf WP
+	psi_leaf_max_ls.append(np.amax([g.node(vid).psi_head for vid in g.property('gs').keys()])) # max leaf WP
+	psi_leaf_min_ls.append(np.amin([g.node(vid).psi_head for vid in g.property('gs').keys()])) #min leaf WP
+
+        # Calculate # leaves above a critical temperature threshold (47C)
+        temp_array = np.asarray(Tlc_dict[date].values())
+	temp_bool = temp_array > 47
+	tthresh_ls.append(temp_bool.sum())
+
+    	# Calculate # leaves below a critical WP threshold (TLP)
+    	psi_array = [g.node(vid).psi_head for vid in g.property('gs').keys()]
+    	psi_array2 = np.asarray(psi_array)
+    	psi_bool = psi_array2 <= TLP
+    	pthresh_ls.append(psi_bool.sum())
+
+        # Read soil water potntial at midnight
+        if 'psi_soil' in kwargs:
+            psi_soil = kwargs['psi_soil']
+	    irrigation_ls.append(0)
+	elif 'initial_psi_soil' in kwargs:
+	    # Estimate soil water potntial evolution due to transpiration
+	   # pdb.set_trace()
+            psi_soil_results_list = hydraulic.soil_water_potential_irrigated(psi_soil, irr_to_apply, irr_remain,  
+                                                               date_list, dt_index, soil_class,  
+                                                               soil_total_volume, irr_sdate, irr_freq,
+                                                               RDI, drip_rate, sapflow_tot, psi_min)    
+	    #pdb.set_trace()
+	    psi_soil = psi_soil_results_list[0]
+	    irr_remain = psi_soil_results_list[1]
+	    irr_to_apply = psi_soil_results_list[2]
+            irrigation_ls.append(psi_soil_results_list[3])
+        else:
+            if date.hour == 0:
+                try:
+                    psi_soil_init = psi_pd.ix[date.date()][0]
+                    psi_soil = psi_soil_init
+                except KeyError:
+                    pass
+            # Estimate soil water potntial evolution due to transpiration
+            else:
+                 psi_soil = hydraulic.soil_water_potential(psi_soil,
+                                                          g.node(vid_collar).Flux * timestep_len,
+                                                          soil_class, soil_total_volume, psi_min)
+		
+	psi_soil_ls.append(psi_soil)
+
 
         print '---------------------------'
         print 'psi_soil', round(psi_soil, 4)
@@ -379,30 +463,46 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         # print 'Rdiff/Rglob ', RdRsH_ratio
         # print 't_sky_eff ', t_sky_eff
         print 'gs', np.median(g.property('gs').values())
-        print 'flux H2O', round(g.node(vid_collar).Flux * 1000. * time_conv, 4)
+        print 'flux H2O', round(g.node(vid_collar).Flux * 1000. * timestep_len, 4)
         print 'flux C2O', round(g.node(vid_collar).FluxC, 4)
         print 'Tleaf ', round(np.median([g.node(vid).Tlc for vid in g.property('gs').keys()]), 2), \
             'Tair ', round(imeteo.Tac[0], 4)
         print ''
         print "=" * 72
 
+        dt_index = dt_index +1
+
     # End time loop +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     # Write output
     # Plant total transpiration
-    sapflow = [flow * time_conv * 1000. for flow in sapflow]
+    #sapflow = [flow * time_conv * 1000. for flow in sapflow]
 
     # sapEast, sapWest = [np.array(flow) * time_conv * 1000. for i, flow in enumerate((sapEast, sapWest))]
 
-    # Median leaf temperature
-    t_ls = [np.median(Tlc_dict[date].values()) for date in meteo.time]
+    # Mean, max, and min leaf temperature (C)
+    t_mean = [np.mean(Tlc_dict[date].values()) for date in meteo.time]
+    t_min = [np.amin(Tlc_dict[date].values()) for date in meteo.time]
+    t_max = [np.amax(Tlc_dict[date].values()) for date in meteo.time]
 
-    # Number of leaves above a given temperature threshold
-#    pdb.set_trace()
-    temp_array = [Tlc_dict[date].values() for date in meteo.time]
-    temp_array2 = np.asarray(temp_array)
-    temp_bool = temp_array2 > 27
-    tthresh_ls = temp_bool.sum()
+    # Percentage of leaves above a critical temperature threshold (47C)
+    tot_leaves = np.count_nonzero(temp_array) 
+    tthresh_ls2 = np.array(tthresh_ls)  
+    tthresh_ls_per = 100*tthresh_ls2/tot_leaves
+
+    # Percentage of leaves below a critical water potential threshold (TLP)
+    #psi_array = [g.node(vid).psi_head for vid in g.property('gs').keys()]
+    #psi_array2 = np.asarray(psi_array)
+    #tot_leaves_p = np.count_nonzero(psi_array2)
+    #psi_bool = psi_array2 <= TLP
+    pthresh_ls2 = np.array(pthresh_ls)
+    pthresh_ls_per = 100*pthresh_ls2/tot_leaves
+
+
+    # Mean, max, and min stomatal conductance (mol m-2 s-1)
+    gs_mean = [np.mean(gs_dict[date].values()) for date in meteo.time]
+    gs_max = [np.amax(gs_dict[date].values()) for date in meteo.time]
+    gs_min = [np.amin(gs_dict[date].values()) for date in meteo.time]
 
     # Intercepted global radiation
     rg_ls = np.array(rg_ls) / (soil_dimensions[0] * soil_dimensions[1])
@@ -411,10 +511,20 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
         'Rg': rg_ls,
         'An': an_ls,
         'E': sapflow,
-        # 'sapEast': sapEast,
-        # 'sapWest': sapWest,
-        'Tleaf': t_ls,
-	'Tthresh': tthresh_ls
+        'Tleaf_mean': t_mean,
+	'Tleaf_min': t_min,
+	'Tleaf_max': t_max,
+	'Tthresh': tthresh_ls_per,
+        'Psi_soil': psi_soil_ls,
+        'Psi_stem': psi_stem_ls,
+        'Psi_leaf_mean': psi_leaf_mean_ls,
+        'Psi_leaf_max': psi_leaf_max_ls,
+        'Psi_leaf_min': psi_leaf_min_ls,
+        'Pthresh': pthresh_ls_per,
+        'Gs_mean': gs_mean,
+        'Gs_max': gs_max,
+        'Gs_min': gs_min,
+	'Irrigation': irrigation_ls
     }
 
     # Results DataFrame
@@ -422,7 +532,9 @@ def run(g, wd, scene=None, write_result=True, **kwargs):
 
     # Write
     if write_result:
-        results_df.to_csv(output_path + 'time_series.output',
+        #results_df.to_csv(output_path + 'time_series.output',
+        #              sep=';', decimal='.')
+        results_df.to_csv('time_series_%s.output' % output_index,
                       sep=';', decimal='.')
 
     time_off = datetime.now()

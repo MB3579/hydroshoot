@@ -119,6 +119,7 @@ class Hydraulic:
     def __init__(self, hydraulic_dict):
         self.MassConv = hydraulic_dict['MassConv']
         self.psi_min = hydraulic_dict['psi_min']
+        self.TLP = hydraulic_dict['TLP']
         self.Kx_dict = hydraulic_dict['Kx_dict']
         self.par_K_vul = hydraulic_dict['par_K_vul']
 

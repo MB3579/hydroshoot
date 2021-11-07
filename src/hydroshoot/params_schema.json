@@ -378,6 +378,11 @@
           "description": "[MPa] Minimum allowable xylem water potential",
           "maximum": 0.0
         },
+        "TLP": {
+          "type": "number",
+          "description": "[MPa] Leaf turgor loss point",
+          "maximum": 0.0
+        },
         "Kx_dict": {
           "type": "object",
           "description": "Parameters of the allometric relationship between the diameter of the hydraulic segment and its maximum hydraulic conductivity (K_max=a*D^b)",

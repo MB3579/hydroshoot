@@ -6,9 +6,10 @@ Hydraulic structure module of HydroShoot.
 
 This module computes xylem water potential value at each node of the shoot.
 """
-
+import pdb
 from scipy import exp, absolute, pi, log, array, optimize
 from copy import deepcopy
+from datetime import datetime, timedelta
 
 from openalea.plantgl.all import surface as surf
 import openalea.mtg.traversal as traversal
@@ -431,3 +432,80 @@ def xylem_water_potential(g, psi_soil=-0.8, model='tuzet', psi_min=-3.0, psi_err
         counter += 1
 
     return counter
+
+def soil_water_potential_irrigated(psi_soil_init, irr_to_apply, irr_remain, date_list, dt_index, soil_class, 	
+                                  soil_total_volume, irr_sdate, irr_freq, RDI, drip_rate, sapflow_tot, psi_min=-3.):
+    """Computes soil water potential following van Genuchten (1980), allowing for irrigation inputs
+
+    Args:
+        psi_soil_init (float): [MPa] initial soil water potential
+        water_withdrawal (float): [Kg T-1] water volume that is withdrawn from the soil (by transpiration for instance)
+            during a time lapse T
+   	irrigation_input (float): [kg T-1] water volume added to the soil by irrigation over time T
+        soil_class (str): one of the soil classes proposed by Carsel and Parrish (1988), see :func:`def_param_soil` for
+            details
+        soil_total_volume (float): [m3] total apparent volume of the soil (including solid, liquid and gaseous
+            fractions)
+        psi_min (float): [MPa] minimum allowable water potential
+
+    Returns:
+        (float): [MPa] soil water potential
+
+    Notes:
+        Strictly speaking, :arg:`psi_min` expresses rather the minimum water potential at the base of the plant shoot.
+
+    References:
+        van Genuchten M., 1980.
+            A closed-form equation for predicting the hydraulic conductivity of unsaturated soils.
+            Soil Science Society of America Journal 44, 892897.
+    """
+    
+    psi_soil_init = min(-1e-6, psi_soil_init)
+    theta_r, theta_s, alpha, n, k_sat = def_param_soil()[soil_class]
+    m = 1. - 1. / n
+    psi = psi_soil_init * 1.e6 / (rho * g_p) * 100.  # MPa -> cm_H20
+    theta_init = theta_r + (theta_s - theta_r) / (1. + absolute(alpha * psi) ** n) ** m
+    date = date_list[dt_index] # declare current date 
+    irr_diff = timedelta.total_seconds(date - irr_sdate) # time since start of irrigation
+    if ((date >= irr_sdate) and ((irr_diff % (irr_freq*24*3600))==0)): # irrigation time?
+	#pdb.set_trace()
+	#irr_freq_dt = timedelta(seconds=irr_freq)
+	irr_freq_dt = timedelta(days=irr_freq)	
+	prev_irr = date - irr_freq_dt # identify last irrigation date
+	prev_irr_id = date_list.index.get_loc(prev_irr)
+	ETc = sum(sapflow_tot[(prev_irr_id+1):(dt_index+1)])/1000 # cumul. transpiration since last irrigation
+	drip_time = (date_list[dt_index+1] - date_list[dt_index])
+	max_irr = drip_time.seconds/3600 * drip_rate # hr * kg hr-1
+	# assume irrigation is limited by emitter rate
+	irr_to_apply = ETc * RDI # replace a percentage of cumul. transpiration
+	irrigation_input = min(irr_to_apply, max_irr)	
+        irr_remain = max(0.0, irr_to_apply - irrigation_input) # amount remaining to apply
+    elif (irr_remain > 0):
+	drip_time = (date_list[dt_index+1] - date_list[dt_index])
+	max_irr = drip_time.seconds/3600 * drip_rate # hr * kg hr-1
+	irrigation_input = min(irr_remain, max_irr)
+	irr_remain_new = max(0.0, irr_remain - irrigation_input)
+        irr_remain = irr_remain_new
+        #pdb.set_trace()
+    else:
+        irr_to_apply = 0.0
+	irrigation_input = 0.0
+    
+    water_withdrawal = sapflow_tot[dt_index]/1000
+    flux = (water_withdrawal - irrigation_input) * 1.e-3  # kg T-1 -> m3 T-1
+
+    porosity_volume = soil_total_volume * theta_s
+    delta_theta = flux / porosity_volume  # [m3 m-3]
+    theta = max(theta_r, theta_init - delta_theta)
+#    pdb.set_trace()
+    if theta <= theta_r:
+        psi_soil = psi_min
+    elif theta >= theta_s:
+        psi_soil = 0.0
+    else:
+        def _water_retention(x):
+            return 1. / (1. + absolute(alpha * x) ** n) ** m - (theta - theta_r) / (theta_s - theta_r)
+
+        psi_soil = optimize.fsolve(_water_retention, array([psi]))[0] / (1.e6 / (rho * g_p) * 100)
+
+    return [max(psi_min, float(psi_soil)), irr_remain, irr_to_apply, irrigation_input]

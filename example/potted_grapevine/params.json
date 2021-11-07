@@ -7,7 +7,7 @@
 	"meteo": "meteo.input",
     "elevation": 44.0,
     "tzone": "Europe/Paris",
-    "output_index": "",
+    "output_index": "1",
     "unit_scene_length": "cm",
     "simplified_form_factors": true,
     "hydraulic_structure": true,
@@ -80,6 +80,7 @@
   "hydraulic": {
     "MassConv": 18.01528,
     "psi_min": -3.0,
+    "TLP": -1.5,
     "Kx_dict": {
       "a": 1.6,
       "b": 2.0,

@@ -1564,15 +1564,11 @@ def mtg_output(g, wd):
     return
 
 def mtg_save(g, scene, file_path):
-
     if not path.exists(file_path):
         mkdir(file_path)
-
     geom = {vid:g.node(vid).geometry for vid in g.property('geometry')}
     g.remove_property('geometry')
-
     fg = file_path + 'mtg' + g.date + '.pckl'
-
     f = open(fg, 'w')
     dump([g,scene], f)
     f.close()
@@ -1584,7 +1580,7 @@ def mtg_save(g, scene, file_path):
 def mtg_load(wd, index):
     
     fgeom = wd + 'geometry%s.bgeom'%index
-    fg = wd + '%s.pckl'%(index)
+    fg = wd + 'mtg%s.pckl'%(index)
     
     scene = pgl.Scene()
     scene.read(fgeom, 'BGEOM')
@@ -1613,6 +1609,6 @@ def mtg_save_geometry(scene, file_path, index=''):
 
     fgeom = file_path + 'geometry%s.bgeom' % index
 
-    scene.save(fgeom, 'BGEOM')
+    scene.save(str(fgeom), 'BGEOM')
 
     return

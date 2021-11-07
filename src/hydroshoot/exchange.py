@@ -209,7 +209,7 @@ def arrhenius_2(param_name, leaf_temperature, photo_params):
 
 def dHd_sensibility(psi, temp, dhd_max=200.,
                     dhd_inhib_beg=195., dHd_inhib_max=190.,
-                    psi_inhib_beg=-.75, psi_inhib_max=-2.,
+                    psi_inhib_beg=-1.5, psi_inhib_max=-3.,
                     temp_inhib_beg=35, temp_inhib_max=40):
     """Calculates the combined effect of irradiance and heat stress on the enthalpy of deactivation parameter.
 
@@ -650,7 +650,7 @@ def gas_exchange_rates(g, photo_params, photo_n_params, gs_params, meteo, E_type
                 leaf_par_photo['Rd'] = photo_n_params['Rd_N'][0] * node.Na + photo_n_params['Rd_N'][1]
                 dhd_max = leaf_par_photo['dHd']
                 dhd = dHd_sensibility(psi, t_leaf, dhd_max=dhd_max, dhd_inhib_beg=195., dHd_inhib_max=180.,
-                                      psi_inhib_beg=-.75, psi_inhib_max=-2., temp_inhib_beg=32, temp_inhib_max=33)
+                                      psi_inhib_beg=-1.5, psi_inhib_max=-3., temp_inhib_beg=35, temp_inhib_max=40)
 
                 leaf_par_photo['dHd'] = dhd
                 node.par_photo = leaf_par_photo

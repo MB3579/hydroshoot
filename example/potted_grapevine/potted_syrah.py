@@ -40,6 +40,11 @@ scene = display.visu(g, def_elmnt_color_dict=True, scene=Scene(),
 # =============================================================================
 # Run HydroShoot
 # =============================================================================
+#ii = 1
+#model.run(g, str(getcwd()) + '/', scene, psi_soil=-0.5,
+#          gdd_since_budbreak=1000., param_index = ii)
 
-model.run(g, str(getcwd()) + '/', scene, psi_soil=-0.5,
-          gdd_since_budbreak=1000.)
+for ii in range(1,11):
+#	print ii
+	model.run(g, str(getcwd()) + '/', scene, psi_soil=-0.5,
+          gdd_since_budbreak=1000., param_index = ii)
