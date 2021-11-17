@@ -8,7 +8,8 @@ TODO: plug to the standard interface of Caribu module.
 
 from numpy import array, deg2rad
 from pandas import date_range
-from pytz import timezone, utc
+#from pytz import timezone, utc
+from pytz import timezone
 from pvlib.solarposition import ephemeris
 
 from openalea.plantgl.all import Translated, Sphere, Shape, Material, Color3, Viewer
@@ -32,18 +33,20 @@ def local2solar(local_time, latitude, longitude, time_zone, temperature=25.):
         temperature (float): [°C] air temperature
 
     Returns:
-        (datetime): utc time
+       # deleted in new version - (datetime): utc time
         (float): [decimal hours] solar time
 
     """
 
     time_zone = timezone(time_zone)
     local_time = time_zone.localize(local_time)
-    date_utc = local_time.astimezone(utc)
+    ######date_utc = local_time.astimezone(utc)
     datet = date_range(local_time, local_time)
-    lst = ephemeris(datet, latitude, longitude, temperature).solar_time.values[0]
+    ######lst = ephemeris(datet, latitude, longitude, temperature).solar_time.values[0]
+    solar_time = ephemeris(datet, latitude, longitude, temperature).solar_time.values[0]
 
-    return date_utc, lst
+    ######return date_utc, lst
+    return solar_time
 
 
 def optical_prop(mtg, leaf_lbl_prefix='L', stem_lbl_prefix=('in', 'Pet', 'cx'),
@@ -185,14 +188,18 @@ def irradiance_distribution(meteo, geo_location, irradiance_unit,
         corr = e_conv_Wm2(irradiance_unit)
         energy = energy * corr
 
-        # Second check: Convert to UTC datetime
+        ######### Second check: Convert to UTC datetime
+        # Second check: Convert to solar time
+        doy = date.dayofyear ##### added
         latitude, longitude, elevation = [geo_location[x] for x in range(3)]
         temperature = meteo.Tac.values[0]
-        date_utc, lst = local2solar(date, latitude, longitude, time_zone, temperature)
-        doy_utc = date_utc.timetuple().tm_yday
-        hour_utc = date_utc.hour + date_utc.minute / 60.
+        #########date_utc, lst = local2solar(date, latitude, longitude, time_zone, temperature)
+        #########doy_utc = date_utc.timetuple().tm_yday
+        #########hour_utc = date_utc.hour + date_utc.minute / 60.
         # R: Attention, ne renvoie pas exactement le même RdRsH que celui du noeud 'spitters_horaire' dans topvine.
-        diffuse_ratio_hourly = RdRsH(energy, doy_utc, hour_utc, latitude)
+        #########diffuse_ratio_hourly = RdRsH(energy, doy_utc, hour_utc, latitude)
+        solar_time = local2solar(date, latitude, longitude, time_zone, temperature)  ##### added
+        diffuse_ratio_hourly = RdRsH(Rg=energy, DOY=doy, heureTU=solar_time, latitude=latitude)
         diffuse_ratio.append(diffuse_ratio_hourly * energy)
         nrj_sum += energy
 
@@ -213,10 +220,12 @@ def irradiance_distribution(meteo, geo_location, irradiance_unit,
             direction = [idirect[0] for idirect in direction]
             direction = map(lambda x: tuple(list(x[:2]) + [-x[2]]), direction)
 
-        sky = zip(len(direction) * [irradiance_diff / len(direction)], direction)
+        ########sky = zip(len(direction) * [irradiance_diff / len(direction)], direction)
+        sky = list(zip(energy2, direction))  ###### added
 
         # direct irradiance
-        sun = Gensun.Gensun()(Rsun=irradiance_dir, DOY=doy_utc, heureTU=hour_utc, lat=latitude)
+        ######sun = Gensun.Gensun()(Rsun=irradiance_dir, DOY=doy_utc, heureTU=hour_utc, lat=latitude)
+        sun = Gensun.Gensun()(Rsun=irradiance_dir, DOY=doy, heureTU=solar_time, lat=latitude)#### added
         sun = GetLightsSun.GetLightsSun(sun)
         sun_data = [(float(sun.split()[0]), (float(sun.split()[1]), float(sun.split()[2]), float(sun.split()[3])))]
 

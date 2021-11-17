@@ -45,11 +45,11 @@ else:
 # Run HydroShoot
 # =============================================================================
 
-#for ii in range(1,6):
-#	model.run(g, str(getcwd()) + '/', scene, initial_psi_soil = -0.5, gdd_since_budbreak = 760., param_index = ii)
+for ii in range(1,6):
+	model.run(g, str(getcwd()) + '/', scene, initial_psi_soil = -0.5, gdd_since_budbreak = 1222., param_index = ii)
 
-ii = 1
-model.run(g, str(getcwd()) + '/', scene, initial_psi_soil = -0.5, gdd_since_budbreak = 1222., param_index = ii)
+#ii = 1
+#model.run(g, str(getcwd()) + '/', scene, initial_psi_soil = -0.5, gdd_since_budbreak = 1222., param_index = ii)
 
 #gdd_since_budbreak = 760 for Napa & 1222 for fresno
 
